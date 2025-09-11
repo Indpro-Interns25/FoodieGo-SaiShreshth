@@ -7,23 +7,50 @@ class AuthCheck extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
+
     if (user != null) {
-      // User is logged in, navigate to HomePage
-      Future.microtask(() {
-        Navigator.of(context).pushReplacementNamed('/homepage');
-      });
+      String? type = user.userMetadata?['role'] as String?;
+      
+      if (type == null) {
+        Future.microtask(() {
+          Navigator.of(context).pushReplacementNamed('/login');
+        });
+        return Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      // Navigate based on the role
+      if (type == 'customer') {
+        Future.microtask(() {
+          Navigator.of(context).pushReplacementNamed('/homepage');
+        });
+      } else if (type == 'driver') {
+        Future.microtask(() {
+          Navigator.of(context).pushReplacementNamed('/driv_homepage');
+        });
+      } else if (type == 'restaurant') {
+        Future.microtask(() {
+          Navigator.of(context).pushReplacementNamed('/rest_homepage');
+        });
+      } else {
+        // Unknown role fallback
+        Future.microtask(() {
+          Navigator.of(context).pushReplacementNamed('/login');
+        });
+      }
+
+      return Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     } else {
-      // User is not logged in, navigate to LoginPage
+      // User not logged in
       Future.microtask(() {
         Navigator.of(context).pushReplacementNamed('/login');
       });
+      return Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
-
-    // While checking the auth state, show a loading indicator
-    return Scaffold(
-      body: Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
   }
 }

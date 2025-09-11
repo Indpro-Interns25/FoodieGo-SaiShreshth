@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'logout.dart';
-import 'delete_user.dart';
 import 'intro.dart';
 
 import 'home.dart';
@@ -91,7 +90,7 @@ class _HomePageState extends State<HomePage> {
           fontSize: 25,
         ),),
         automaticallyImplyLeading: true,
-        backgroundColor: const Color.fromARGB(255, 212, 179, 156),
+        backgroundColor: const Color.fromARGB(255, 204, 155, 120),
         iconTheme: const IconThemeData(
           color: Color.fromARGB(255, 243, 105, 77), //change your color here
         ),
@@ -196,19 +195,6 @@ class _HomePageState extends State<HomePage> {
               title: const Text('Logout'),
               onTap: () async {
                 await Supabase.instance.client.auth.signOut();
-                if (mounted) {
-                  Navigator.of(context).pushReplacementNamed('/login');
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.delete_forever,
-                color: Color.fromARGB(255, 243, 105, 77),
-              ),
-              title: const Text('Delete account'),
-              onTap: () async {
-                deleteGuestUserAccount(context);
                 if (mounted) {
                   Navigator.of(context).pushReplacementNamed('/login');
                 }
