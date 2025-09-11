@@ -6,8 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // import 'second.dart';
 import 'login.dart';
 import 'register.dart';
-import 'homepage.dart';
+import 'homepage.dart' as cust;
 import 'authcheck.dart';
+import 'rest_homepage.dart' as rest;
+import 'driv_homepage.dart' as driv;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,7 +36,9 @@ class MyApp extends StatelessWidget {
         '/authcheck':(context) => const AuthCheck(),
         '/login':(context) => const LoginPage(),
         '/register':(context) => const RegisterPage(),
-        '/homepage':(context) => const HomePage(),
+        '/homepage':(context) => const cust.HomePage(),
+        '/rest_homepage':(context) => const rest.HomePage(),
+        '/driv_homepage':(context) => const driv.HomePage(),
       },
     );
   }

@@ -37,7 +37,8 @@ class _RegisterPageState extends State<RegisterPage> {
 
     try {
       if (_emailController.text.isEmpty || 
-      _passwordController.text.isEmpty) {
+      _passwordController.text.isEmpty ||
+      _usernameController.text.isEmpty) {
         throw const AuthException('Please fill in all fields.');
       }
 
@@ -45,6 +46,7 @@ class _RegisterPageState extends State<RegisterPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
         data: {
+          'username': _usernameController.text.trim(),
           'role': _selectedUserType.toString().split('.').last,
         },
       );
@@ -175,7 +177,7 @@ class _RegisterPageState extends State<RegisterPage> {
     } catch (error) {
       setState(() {
         _errorMessage = '\t\tProfile creation failed.\n';
-      
+        print(error);
         if (error.toString().contains('Forbidden')) {
           const SnackBar(
             content: Text('A profile for this user may already exist.'),

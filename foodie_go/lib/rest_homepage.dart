@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'logout.dart';
 import 'intro.dart';
+import 'delete_user.dart';
 
 import 'home.dart';
 import 'search.dart';
@@ -32,16 +33,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> fetchUsername() async {
+    print("user: "+user!.toString());
+    print("userid: "+user!.id);
     try {
       final response = await Supabase.instance.client
-          .from('customer_profiles')
-          .select('username')
-          .eq('user_id', user!.id)
-          .single();
-      
+          .from('restaurant_profiles')
+          .select('restaurant_name')
+          .eq('user_id', user!.id);
+      print("response: "+response.toString());
       if (mounted) {
         setState(() {
-          username = response['username'] as String;
+          username = response[0]['restaurant_name'] as String?;
         });
       }
     } catch (e) {
@@ -84,7 +86,7 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: const Color.fromARGB(255, 224, 211, 201),
       
       appBar: AppBar(
-        title: const Text('FoodieGo', style: TextStyle(
+        title: const Text('FoodieGo-Rest', style: TextStyle(
           color: Color.fromARGB(255, 243, 105, 77),
           fontWeight: FontWeight.bold,
           fontSize: 25,
@@ -195,6 +197,20 @@ class _HomePageState extends State<HomePage> {
               title: const Text('Logout'),
               onTap: () async {
                 await Supabase.instance.client.auth.signOut();
+                if (mounted) {
+                  Navigator.of(context).pushReplacementNamed('/login');
+                }
+              },
+            ),
+            
+            ListTile(
+              leading: const Icon(
+                Icons.delete_forever,
+                color: Color.fromARGB(255, 243, 105, 77),
+              ),
+              title: const Text('Delete account'),
+              onTap: () async {
+                deleteGuestUserAccount(context);
                 if (mounted) {
                   Navigator.of(context).pushReplacementNamed('/login');
                 }

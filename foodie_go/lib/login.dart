@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:foodie_go/authcheck.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginPage extends StatefulWidget {
@@ -24,10 +25,13 @@ class _LoginPageState extends State<LoginPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-
-      if (response.user != null && mounted) {
-        Navigator.of(context).pushReplacementNamed('/homepage');
-      }
+      // AuthCheck();
+      // if (response.user != null && mounted) {
+      //   Navigator.of(context).pushReplacementNamed('/homepage');
+      // }
+      Future.microtask(() {
+          Navigator.of(context).pushReplacementNamed('/authcheck');
+      });
     } on AuthException catch (error) {
       setState(() {
         _errorMessage = error.message;
