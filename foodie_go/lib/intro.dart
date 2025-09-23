@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'constants.dart';
 
 class IntroductionPage extends StatefulWidget {
   final VoidCallback onComplete;
@@ -67,7 +68,7 @@ class _IntroductionPageState extends State<IntroductionPage> {
                   ElevatedButton(
                     onPressed: () => _completeIntroduction(context),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(255, 243, 105, 77),
+                      backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 40,
                         vertical: 15,

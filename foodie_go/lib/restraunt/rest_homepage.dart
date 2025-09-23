@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'logout.dart';
-import 'delete_user.dart';
-import 'intro.dart';
+// import '../auth/logout.dart';
+import '../intro.dart';
+import '../auth/logout.dart';
+import '../auth/delete_user.dart';
+import '../constants.dart';
 
-import 'home.dart';
-import 'search.dart';
-import 'cart.dart';
-import 'profile.dart';
-import 'premium.dart';
+import 'menu.dart';
+import 'orders.dart';
+import 'payments.dart';
+import 'reviews.dart';
+import 'analytics.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -32,17 +34,24 @@ class _HomePageState extends State<HomePage> {
     fetchUsername();
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+
   Future<void> fetchUsername() async {
+    print("user: "+user!.toString());
+    print("userid: "+user!.id);
     try {
       final response = await Supabase.instance.client
-          .from('customer_profiles')
-          .select('username')
-          .eq('user_id', user!.id)
-          .single();
-      
+          .from('restaurant_profiles')
+          .select('restaurant_name')
+          .eq('user_id', user!.id);
+      print("response: "+response.toString());
       if (mounted) {
         setState(() {
-          username = response['username'] as String;
+          username = response[0]['restaurant_name'] as String?;
         });
       }
     } catch (e) {
@@ -82,18 +91,18 @@ class _HomePageState extends State<HomePage> {
       return IntroductionPage(onComplete: _setIntroAsSeen);
     }
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 224, 211, 201),
-      
+      backgroundColor: AppColors.background,
+
       appBar: AppBar(
-        title: const Text('FoodieGo', style: TextStyle(
-          color: Color.fromARGB(255, 243, 105, 77),
+        title: const Text('FoodieGo-Rest', style: TextStyle(
+          color: AppColors.primary,
           fontWeight: FontWeight.bold,
           fontSize: 25,
         ),),
         automaticallyImplyLeading: true,
-        backgroundColor: const Color.fromARGB(255, 212, 179, 156),
+        backgroundColor: AppColors.secondary,
         iconTheme: const IconThemeData(
-          color: Color.fromARGB(255, 243, 105, 77), //change your color here
+          color: AppColors.primary,
         ),
       ),
 
@@ -103,7 +112,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             DrawerHeader(
               decoration: const BoxDecoration(
-                color: Color.fromARGB(255, 243, 105, 77),
+                color: AppColors.primary,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,7 +120,7 @@ class _HomePageState extends State<HomePage> {
                   const CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.white,
-                    child: Icon(Icons.person, size: 35, color: Color.fromARGB(255, 243, 105, 77),),
+                    child: Icon(Icons.person, size: 35, color: AppColors.primary,),
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -128,7 +137,7 @@ class _HomePageState extends State<HomePage> {
             ListTile(
               leading: const Icon(
                 Icons.person_outline,
-                color: Color.fromARGB(255, 243, 105, 77),
+                color: AppColors.primary,
               ),
               title: const Text('Profile'),
               onTap: () {
@@ -142,7 +151,7 @@ class _HomePageState extends State<HomePage> {
             ListTile(
               leading: const Icon(
                 Icons.shopping_bag_outlined,
-                color: Color.fromARGB(255, 243, 105, 77),
+                color: AppColors.primary,
               ),
               title: const Text('My Orders'),
               onTap: () {
@@ -151,37 +160,13 @@ class _HomePageState extends State<HomePage> {
                 // Navigator.pushNamed(context, '/orders');
               },
             ),
-            ListTile(
-              leading: const Icon(
-                Icons.favorite_border,
-                color: Color.fromARGB(255, 243, 105, 77),
-              ),
-              title: const Text('Favorites'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to favorites page
-                // Navigator.pushNamed(context, '/favorites');
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.location_on_outlined,
-                color: Color.fromARGB(255, 243, 105, 77),
-              ),
-              title: const Text('Delivery Addresses'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to addresses page
-                // Navigator.pushNamed(context, '/addresses');
-              },
-            ),
             const Divider(),
             ListTile(
               leading: const Icon(
                 Icons.support_agent_outlined,
-                color: Color.fromARGB(255, 243, 105, 77),
+                color: AppColors.primary,
               ),
-              title: const Text('Support'),
+              title: const Text('Reviews'),
               onTap: () {
                 Navigator.pop(context);
                 // Navigate to support page
@@ -191,27 +176,23 @@ class _HomePageState extends State<HomePage> {
             ListTile(
               leading: const Icon(
                 Icons.logout,
-                color: Color.fromARGB(255, 243, 105, 77),
+                color: AppColors.primary,
               ),
               title: const Text('Logout'),
               onTap: () async {
-                await Supabase.instance.client.auth.signOut();
-                if (mounted) {
-                  Navigator.of(context).pushReplacementNamed('/login');
-                }
+                await LogoutHelper.logout(context);
               },
             ),
+
+            
             ListTile(
               leading: const Icon(
                 Icons.delete_forever,
-                color: Color.fromARGB(255, 243, 105, 77),
+                color: AppColors.primary,
               ),
               title: const Text('Delete account'),
               onTap: () async {
                 deleteGuestUserAccount(context);
-                if (mounted) {
-                  Navigator.of(context).pushReplacementNamed('/login');
-                }
               },
             ),
           ],
@@ -222,41 +203,41 @@ class _HomePageState extends State<HomePage> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          Home(),
-          Search(),
-          Cart(),
-          Profile(),
-          Premium(),
+          Menu(),
+          Orders(),
+          Payments(),
+          Reviews(),
+          Analytics(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         items:<BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: Icon(Icons.home, color: Color.fromARGB(255, 243, 105, 77),),
-            label: 'Home',
+            icon: Icon(Icons.menu_book_rounded , color: AppColors.primary,),
+            label: 'Menu',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.search, color: Color.fromARGB(255, 243, 105, 77),),
-            label: 'Search',
+            icon: Icon(Icons.list_alt_rounded , color: AppColors.primary,),
+            label: 'Orders',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart, color: Color.fromARGB(255, 243, 105, 77),),
-            label: 'Cart',
+            icon: Icon(Icons.payment_rounded , color: AppColors.primary,),
+            label: 'Payments',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person, color: Color.fromARGB(255, 243, 105, 77),),
-            label: 'Profile',
+            icon: Icon(Icons.star_border_rounded , color: AppColors.primary,),
+            label: 'Reviews',
           ),
           BottomNavigationBarItem(
-            icon: Image.asset('assets/premium.png', width: 24, height: 24,),
-            label: 'Premium',
+            icon: Icon(Icons.analytics_rounded , color: AppColors.primary,),
+            label: 'Analytics',
           )
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor: const Color.fromARGB(255, 243, 105, 77),
+        selectedItemColor: AppColors.primary,
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
-        backgroundColor: const Color.fromARGB(255, 224, 211, 201),
+        backgroundColor: AppColors.background,
         type: BottomNavigationBarType.fixed,
         onTap: _onItemTapped,
       ),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:foodie_go/authcheck.dart';
+import 'package:foodie_go/auth/authcheck.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginPage extends StatefulWidget {

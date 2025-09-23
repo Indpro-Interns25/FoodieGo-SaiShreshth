@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'logout.dart';
-import 'intro.dart';
+import '../auth/logout.dart';
+import '../intro.dart';
 
-import 'home.dart';
-import 'search.dart';
-import 'cart.dart';
-import 'profile.dart';
-import 'premium.dart';
+import 'driver_orders.dart';
+import 'driver_payments.dart';
+import 'driver_profile.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -34,11 +32,11 @@ class _HomePageState extends State<HomePage> {
   Future<void> fetchUsername() async {
     try {
       final response = await Supabase.instance.client
-          .from('customer_profiles')
+          .from('driver_profiles')
           .select('username')
           .eq('user_id', user!.id)
           .single();
-      
+
       if (mounted) {
         setState(() {
           username = response['username'] as String;
@@ -84,8 +82,8 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: const Color.fromARGB(255, 224, 211, 201),
       
       appBar: AppBar(
-        title: const Text('FoodieGo', style: TextStyle(
-          color: Color.fromARGB(255, 243, 105, 77),
+        title: const Text('FoodieGo-Driv', style: TextStyle(
+          color: Color.fromARGB(255, 212, 91, 67),
           fontWeight: FontWeight.bold,
           fontSize: 25,
         ),),
@@ -132,46 +130,18 @@ class _HomePageState extends State<HomePage> {
               title: const Text('Profile'),
               onTap: () {
                 Navigator.pop(context);
-                _onItemTapped(3);
-
-                // Navigate to profile page
-                // Navigator.pushNamed(context, '/profile');
+                _onItemTapped(1);
               },
             ),
             ListTile(
               leading: const Icon(
-                Icons.shopping_bag_outlined,
+                Icons.delivery_dining,
                 color: Color.fromARGB(255, 243, 105, 77),
               ),
-              title: const Text('My Orders'),
+              title: const Text('Assigned Orders'),
               onTap: () {
                 Navigator.pop(context);
-                // Navigate to orders page
-                // Navigator.pushNamed(context, '/orders');
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.favorite_border,
-                color: Color.fromARGB(255, 243, 105, 77),
-              ),
-              title: const Text('Favorites'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to favorites page
-                // Navigator.pushNamed(context, '/favorites');
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.location_on_outlined,
-                color: Color.fromARGB(255, 243, 105, 77),
-              ),
-              title: const Text('Delivery Addresses'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to addresses page
-                // Navigator.pushNamed(context, '/addresses');
+                _onItemTapped(0);
               },
             ),
             const Divider(),
@@ -208,34 +178,24 @@ class _HomePageState extends State<HomePage> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          Home(),
-          Search(),
-          Cart(),
-          Profile(),
-          Premium(),
+          DriverOrders(),
+          DriverPayments(),
+          DriverProfile(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         items:<BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: Icon(Icons.home, color: Color.fromARGB(255, 243, 105, 77),),
-            label: 'Home',
+            icon: Icon(Icons.delivery_dining, color: Color.fromARGB(255, 243, 105, 77),),
+            label: 'Deliveries',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.search, color: Color.fromARGB(255, 243, 105, 77),),
-            label: 'Search',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart, color: Color.fromARGB(255, 243, 105, 77),),
-            label: 'Cart',
+            icon: Icon(Icons.payment, color: Color.fromARGB(255, 243, 105, 77),),
+            label: 'Payments',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person, color: Color.fromARGB(255, 243, 105, 77),),
             label: 'Profile',
-          ),
-          BottomNavigationBarItem(
-            icon: Image.asset('assets/premium.png', width: 24, height: 24,),
-            label: 'Premium',
           )
         ],
         currentIndex: _selectedIndex,
