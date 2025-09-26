@@ -32,6 +32,6 @@ class AppColors {
 }
 
 // API Constants
-// const String flaskApiUrl = 'https://foodie-go-flask.vercel.app';
-const String flaskApiUrl = 'http://127.0.0.1:5000';
+const String flaskApiUrl = 'https://foodie-go-flask.vercel.app';
+// const String flaskApiUrl = 'http://127.0.0.1:5000';
 //
