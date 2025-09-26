@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/logout.dart';
+import '../auth/delete_user.dart';
 import '../intro.dart';
 
 import 'driver_orders.dart';
@@ -144,19 +145,8 @@ class _HomePageState extends State<HomePage> {
                 _onItemTapped(0);
               },
             ),
+            ListTile(title: SizedBox(height: 300)),
             const Divider(),
-            ListTile(
-              leading: const Icon(
-                Icons.support_agent_outlined,
-                color: Color.fromARGB(255, 243, 105, 77),
-              ),
-              title: const Text('Support'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to support page
-                // Navigator.pushNamed(context, '/support');
-              },
-            ),
             ListTile(
               leading: const Icon(
                 Icons.logout,
@@ -169,6 +159,27 @@ class _HomePageState extends State<HomePage> {
                   Navigator.of(context).pushReplacementNamed('/login');
                 }
               },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.delete_forever,
+                color: Color.fromARGB(255, 243, 105, 77),
+              ),
+              title: const Text('Delete account'),
+              onTap: () async {
+                deleteGuestUserAccount(context);
+              },
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'For any problems, please contact support@foodiego.com',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),

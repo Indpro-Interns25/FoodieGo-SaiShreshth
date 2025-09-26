@@ -12,6 +12,7 @@ import 'orders.dart';
 import 'payments.dart';
 import 'reviews.dart';
 import 'analytics.dart';
+import 'profile.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -142,10 +143,10 @@ class _HomePageState extends State<HomePage> {
               title: const Text('Profile'),
               onTap: () {
                 Navigator.pop(context);
-                _onItemTapped(3);
-
-                // Navigate to profile page
-                // Navigator.pushNamed(context, '/profile');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const Profile()),
+                );
               },
             ),
             ListTile(
@@ -156,23 +157,69 @@ class _HomePageState extends State<HomePage> {
               title: const Text('My Orders'),
               onTap: () {
                 Navigator.pop(context);
-                // Navigate to orders page
-                // Navigator.pushNamed(context, '/orders');
+                _onItemTapped(1);
               },
             ),
-            const Divider(),
             ListTile(
               leading: const Icon(
-                Icons.support_agent_outlined,
+                Icons.payment_rounded,
+                color: AppColors.primary,
+              ),
+              title: const Text('Payments'),
+              onTap: () {
+                Navigator.pop(context);
+                _onItemTapped(2);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.star_border_rounded,
                 color: AppColors.primary,
               ),
               title: const Text('Reviews'),
               onTap: () {
                 Navigator.pop(context);
-                // Navigate to support page
-                // Navigator.pushNamed(context, '/support');
+                _onItemTapped(3);
               },
             ),
+            ListTile(
+              leading: const Icon(
+                Icons.analytics_rounded,
+                color: AppColors.primary,
+              ),
+              title: const Text('Analytics'),
+              onTap: () {
+                Navigator.pop(context);
+                _onItemTapped(4);
+              },
+            ),
+            ListTile(title: SizedBox(height: 150)),
+            // ListTile(
+            //   leading: const Icon(
+            //     Icons.shopping_bag_outlined,
+            //     color: AppColors.primary,
+            //   ),
+            //   title: const Text('My Orders'),
+            //   onTap: () {
+            //     Navigator.pop(context);
+            //     // Navigate to orders page
+            //     // Navigator.pushNamed(context, '/orders');
+            //   },
+            // ),
+            // const Divider(),
+            // ListTile(
+            //   leading: const Icon(
+            //     Icons.support_agent_outlined,
+            //     color: AppColors.primary,
+            //   ),
+            //   title: const Text('Reviews'),
+            //   onTap: () {
+            //     Navigator.pop(context);
+            //     // Navigate to support page
+            //     // Navigator.pushNamed(context, '/support');
+            //   },
+            // ),
+            const Divider(),
             ListTile(
               leading: const Icon(
                 Icons.logout,
@@ -194,6 +241,17 @@ class _HomePageState extends State<HomePage> {
               onTap: () async {
                 deleteGuestUserAccount(context);
               },
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'For any problems, please contact support@foodiego.com',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),

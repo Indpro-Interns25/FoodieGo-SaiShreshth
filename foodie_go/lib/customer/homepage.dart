@@ -168,19 +168,9 @@ class _HomePageState extends State<HomePage> {
                 });
               },
             ),
+            ListTile(title: SizedBox(height: 280)),
+            
             const Divider(),
-            ListTile(
-              leading: const Icon(
-                Icons.support_agent_outlined,
-                color: AppColors.primary,
-              ),
-              title: const Text('Support'),
-              onTap: () {
-                Navigator.pop(context);
-                // Navigate to support page
-                // Navigator.pushNamed(context, '/support');
-              },
-            ),
             ListTile(
               leading: const Icon(
                 Icons.logout,
@@ -203,6 +193,17 @@ class _HomePageState extends State<HomePage> {
               onTap: () async {
                 deleteGuestUserAccount(context);
               },
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'For any problems, please contact support@foodiego.com',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),
