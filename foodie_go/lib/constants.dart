@@ -30,3 +30,8 @@ class AppColors {
   static const Color border = Color(0xFFE5E7EB); // Light border
   static const Color divider = Color(0xFFF3F4F6); // Divider color
 }
+
+// API Constants
+// const String flaskApiUrl = 'https://foodie-go-flask.vercel.app';
+const String flaskApiUrl = 'http://127.0.0.1:5000';
+//

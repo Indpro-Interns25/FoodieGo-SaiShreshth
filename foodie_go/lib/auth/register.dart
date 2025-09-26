@@ -36,7 +36,7 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      if (_emailController.text.isEmpty || 
+      if (_emailController.text.isEmpty ||
       _passwordController.text.isEmpty ||
       _usernameController.text.isEmpty) {
         throw const AuthException('Please fill in all fields.');
@@ -54,7 +54,7 @@ class _RegisterPageState extends State<RegisterPage> {
       if (response.user == null) {
         throw const AuthException('Registration failed. Please try again.');
       }
-      
+
       _tempUserId = response.user!.id;
       setState(() {
         _emailSubmitted = true;
@@ -102,7 +102,7 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
     try {
-      if (_usernameController.text.isEmpty || 
+      if (_usernameController.text.isEmpty ||
       _phoneController.text.isEmpty) {
         throw const AuthException('Please fill in all fields.');
       }
@@ -164,7 +164,7 @@ class _RegisterPageState extends State<RegisterPage> {
         Navigator.of(context).pushReplacementNamed('/login');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: 
+            content:
             Text('Registration successful!\nPlease log in.'),
             backgroundColor: Colors.green
           ),
@@ -212,272 +212,280 @@ class _RegisterPageState extends State<RegisterPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 212, 179, 156),
-      
+      resizeToAvoidBottomInset: true, // This helps handle keyboard properly
+
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: const Color.fromARGB(255, 212, 179, 156),
       ),
 
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Row(
-                      children: [
-                        const SizedBox(width: 20),
-                        const Text(
-                          'Register:',
-                          style: TextStyle(
-                            color: Color.fromARGB(255, 243, 105, 77),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 25,
-                          ),
+      body: SafeArea(
+        child: SingleChildScrollView( // Allow scrolling when keyboard appears
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minWidth: MediaQuery.of(context).size.width,
+              minHeight: MediaQuery.of(context).size.height - AppBar().preferredSize.height - MediaQuery.of(context).padding.top,
+            ),
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 20.0,
+                right: 20.0,
+                top: 20.0,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20.0, // Add bottom padding when keyboard is visible
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      const SizedBox(width: 20),
+                      const Text(
+                        'Register:',
+                        style: TextStyle(
+                          color: Color.fromARGB(255, 243, 105, 77),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 25,
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Username textbox
-                    Row(
-                      children: [
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: TextField(
-                            controller: _usernameController,
-                            decoration: InputDecoration(
-                              labelText: 'Username',
-                              border: OutlineInputBorder(),
-                              hoverColor: Colors.white,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    // usertype dropdown
-                    Row(
-                      children: [
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: DropdownButtonFormField<UserType>(
-                            initialValue: _selectedUserType,
-                            decoration: InputDecoration(
-                              labelText: 'Register as',
-                              border: OutlineInputBorder(),
-                            ),
-                            onChanged: (UserType? newValue) {
-                              setState(() {
-                                _selectedUserType = newValue!;
-                              });
-                            },
-                            items: UserType.values.map((UserType type) {
-                              return DropdownMenuItem<UserType>(
-                                value: type,
-                                child: Text(type.toString().split('.').last),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    // Appropriate fields for user type selected
-                    if (_selectedUserType == UserType.restaurant) ...[
-                      Row(
-                        children: [
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: TextField(
-                              controller: _restaurantNameController,
-                              decoration: InputDecoration(
-                                labelText: 'Restaurant Name',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                        ],
                       ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: TextField(
-                              controller: _addressController,
-                              decoration: InputDecoration(
-                                labelText: 'Address',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                    ] else if (_selectedUserType == UserType.driver) ...[
-                      Row(
-                        children: [
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: TextField(
-                              controller: _vehicleNumberController,
-                              decoration: InputDecoration(
-                                labelText: 'Vehicle Number',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                    ]
-                    else if (_selectedUserType == UserType.customer) ...[
-                      Row(
-                        children: [
-                          const SizedBox(width: 20),
-                          Expanded(
-                            child: TextField(
-                              controller: _addressController,
-                              decoration: InputDecoration(
-                                labelText: 'Address',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 20),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
                     ],
-                    // contact number textbox
-                    Row(
-                      children: [
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: TextField(
-                            controller: _phoneController,
-                            decoration: InputDecoration(
-                              labelText: 'Contact Number',
-                              border: OutlineInputBorder(),
-                            ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Username textbox
+                  Row(
+                    children: [
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: TextField(
+                          controller: _usernameController,
+                          decoration: InputDecoration(
+                            labelText: 'Username',
+                            border: OutlineInputBorder(),
+                            hoverColor: Colors.white,
                           ),
-                        ),
-                        const SizedBox(width: 20),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    // Email textbox
-                    Row(
-                      children: [
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: TextField(
-                            controller: _emailController,
-                            decoration: InputDecoration(
-                              labelText: 'Email',
-                              border: OutlineInputBorder(),
-                              hoverColor: Colors.white,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    // Password textbox
-                    Row(
-                      children: [
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: TextField(
-                            controller: _passwordController,
-                            obscureText: true,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    
-                    // Display error message if any
-                    if (_errorMessage != null) 
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10.0),
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(color: Colors.red),
                         ),
                       ),
-
-                    // Register Button
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ElevatedButton(
-                          onPressed: () {
-                            // register logic
-                            if (!_isLoading) {
-                              _handleRegister();
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(255, 243, 105, 77),
+                      const SizedBox(width: 20),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // usertype dropdown
+                  Row(
+                    children: [
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: DropdownButtonFormField<UserType>(
+                          initialValue: _selectedUserType,
+                          decoration: InputDecoration(
+                            labelText: 'Register as',
+                            border: OutlineInputBorder(),
                           ),
-                          child: _isLoading ?
-                          const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
+                          onChanged: (UserType? newValue) {
+                            setState(() {
+                              _selectedUserType = newValue!;
+                            });
+                          },
+                          items: UserType.values.map((UserType type) {
+                            return DropdownMenuItem<UserType>(
+                              value: type,
+                              child: Text(type.toString().split('.').last),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Appropriate fields for user type selected
+                  if (_selectedUserType == UserType.restaurant) ...[
+                    Row(
+                      children: [
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: TextField(
+                            controller: _restaurantNameController,
+                            decoration: InputDecoration(
+                              labelText: 'Restaurant Name',
+                              border: OutlineInputBorder(),
                             ),
-                          )
-                          
-                          : Text(
-                            _emailSubmitted ? 'Create Profile' : 'Verify Email',
-                            style: TextStyle(fontSize: 18, color: Colors.white),
                           ),
                         ),
+                        const SizedBox(width: 20),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    // Register option redirect
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: TextField(
+                            controller: _addressController,
+                            decoration: InputDecoration(
+                              labelText: 'Address',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/login');
-                          }, 
-                          child: const Text(
-                            'Login',
-                            style: TextStyle(fontSize: 18, color: Color.fromARGB(255, 243, 105, 77)),
+                        ),
+                        const SizedBox(width: 20),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ] else if (_selectedUserType == UserType.driver) ...[
+                    Row(
+                      children: [
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: TextField(
+                            controller: _vehicleNumberController,
+                            decoration: InputDecoration(
+                              labelText: 'Vehicle Number',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ]
+                  else if (_selectedUserType == UserType.customer) ...[
+                    Row(
+                      children: [
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: TextField(
+                            controller: _addressController,
+                            decoration: InputDecoration(
+                              labelText: 'Address',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  // contact number textbox
+                  Row(
+                    children: [
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: TextField(
+                          controller: _phoneController,
+                          decoration: InputDecoration(
+                            labelText: 'Contact Number',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Email textbox
+                  Row(
+                    children: [
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: TextField(
+                          controller: _emailController,
+                          decoration: InputDecoration(
+                            labelText: 'Email',
+                            border: OutlineInputBorder(),
+                            hoverColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Password textbox
+                  Row(
+                    children: [
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Display error message if any
+                  if (_errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10.0),
+                      child: Text(
+                        _errorMessage!,
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+
+                  // Register Button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          // register logic
+                          if (!_isLoading) {
+                            _handleRegister();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromARGB(255, 243, 105, 77),
+                        ),
+                        child: _isLoading ?
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
                           ),
                         )
-                      ]
-                    ),
-                  ],
-                ),
+
+                        : Text(
+                          _emailSubmitted ? 'Create Profile' : 'Verify Email',
+                          style: TextStyle(fontSize: 18, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Register option redirect
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+                        ),
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/login');
+                        },
+                        child: const Text(
+                          'Login',
+                          style: TextStyle(fontSize: 18, color: Color.fromARGB(255, 243, 105, 77)),
+                        ),
+                      )
+                    ]
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

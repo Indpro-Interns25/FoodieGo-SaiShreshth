@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -31,45 +29,12 @@ class _HomePageState extends State<HomePage> {
   String? username;
   int _selectedIndex = 0;
 
-  Timer? _confirmationTimer;
-  bool _showConfirmationPopup = false;
-  bool _wasLoggedOut = true;
-  bool _confirming = false;
-  bool _cancelling = false;
-
   @override
   void initState() {
     super.initState();
     checkFirstTime();
     fetchUsername();
-    Provider.of<CartProvider>(context, listen: false).loadCart().then((_) {
-      // After loading cart, check if logged in and cart not empty
-      final cart = Provider.of<CartProvider>(context, listen: false);
-      if (user != null && cart.cartCount > 0 && _wasLoggedOut) {
-        _showConfirmationPopup = true;
-        _startConfirmationTimer();
-        _wasLoggedOut = false;
-        _showPopup();
-      }
-    });
-
-    // Listen to auth state changes
-    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      final event = data.event;
-      final session = data.session;
-      if (event == AuthChangeEvent.signedIn) {
-        final cart = Provider.of<CartProvider>(context, listen: false);
-        if (cart.cartCount > 0 && _wasLoggedOut) {
-          _showConfirmationPopup = true;
-          _startConfirmationTimer();
-          _wasLoggedOut = false;
-          _showPopup();
-        }
-      } else if (event == AuthChangeEvent.signedOut) {
-        _wasLoggedOut = true;
-        _cancelConfirmationTimer();
-      }
-    });
+    Provider.of<CartProvider>(context, listen: false).loadCart();
   }
 
   Future<void> fetchUsername() async {
@@ -90,121 +55,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _startConfirmationTimer() {
-    _confirmationTimer?.cancel();
-    _confirmationTimer = Timer(const Duration(minutes: 5), () {
-      // Expire the order after 5 minutes - clear cart
-      Provider.of<CartProvider>(context, listen: false).clearCart();
-      if (mounted) {
-        setState(() {
-          _showConfirmationPopup = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order expired due to no confirmation.')),
-        );
-      }
-    });
-  }
 
-  void _cancelConfirmationTimer() {
-    _confirmationTimer?.cancel();
-    _confirmationTimer = null;
-  }
-
-  void _showPopup() {
-    if (!_showConfirmationPopup) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (ModalRoute.of(context)?.isCurrent != true) return; // Prevent multiple dialogs
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('Order Confirmation'),
-            content: const Text('Please confirm your order within 5 minutes.'),
-            actions: [
-              TextButton(
-                onPressed: _cancelling ? null : () async {
-                  setState(() => _cancelling = true);
-                  await Provider.of<CartProvider>(context, listen: false).clearCart();
-                  setState(() => _cancelling = false);
-                  Navigator.of(context).pop();
-                  setState(() {
-                    _showConfirmationPopup = false;
-                  });
-                  _cancelConfirmationTimer();
-                },
-                child: _cancelling
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: _confirming ? null : () {
-                  setState(() => _confirming = true);
-                  Navigator.of(context).pop();
-                  setState(() {
-                    _showConfirmationPopup = false;
-                    _confirming = false;
-                  });
-                  _cancelConfirmationTimer();
-                  // Navigate to CheckoutPage
-                  if (mounted) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const CheckoutPage()),
-                    );
-                  }
-                },
-                child: _confirming
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Confirm'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
-          );
-        },
-      );
-    });
-  }
-
-  Future<void> _confirmOrder() async {
-    try {
-      final supabase = Supabase.instance.client;
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
-
-      final orders = await supabase
-          .from('orders')
-          .select('id, status')
-          .eq('user_id', user.id)
-          .eq('status', 'waiting for confirmation')
-          .order('placed_at', ascending: false)
-          .limit(1);
-
-      if (orders != null && orders.isNotEmpty) {
-        final orderId = orders[0]['id'];
-        await supabase
-            .from('orders')
-            .update({'status': 'confirmed'})
-            .eq('id', orderId);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Order confirmed successfully!')),
-          );
-        }
-      }
-    } catch (e) {
-      print('Error confirming order: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to confirm order')),
-        );
-      }
-    }
-  }
 
   Future<void> checkFirstTime() async {
     final prefs = await SharedPreferences.getInstance();

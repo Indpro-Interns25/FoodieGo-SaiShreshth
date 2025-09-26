@@ -84,7 +84,7 @@ class _MenuState extends State<Menu> {
     // Call your API here to update the database
     final accessToken = session.accessToken;
     final response = await http.post(
-      Uri.parse('https://foodie-go-flask.vercel.app/updateDish'),
+      Uri.parse('$flaskApiUrl/updateDish'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',

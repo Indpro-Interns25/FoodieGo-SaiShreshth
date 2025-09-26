@@ -270,40 +270,40 @@ class _OrdersList extends StatelessWidget {
                               ),
                             ],
                           ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => ReviewPage(orderId: id),
-                                  ),
-                                );
-                              },
-                              borderRadius: BorderRadius.circular(12),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.star_outline,
-                                      color: Colors.white,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Review',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
+                          // child: Material(
+                          //   color: Colors.transparent,
+                          //   child: InkWell(
+                          //     onTap: () {
+                          //       Navigator.of(context).push(
+                          //         MaterialPageRoute(
+                          //           builder: (_) => ReviewPage(orderId: id),
+                          //         ),
+                          //       );
+                          //     },
+                          //     borderRadius: BorderRadius.circular(12),
+                          //     child: Padding(
+                          //       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          //       child: Row(
+                          //         children: [
+                          //           Icon(
+                          //             Icons.star_outline,
+                          //             color: Colors.white,
+                          //             size: 16,
+                          //           ),
+                          //           const SizedBox(width: 4),
+                          //           Text(
+                          //             'Review',
+                          //             style: TextStyle(
+                          //               color: Colors.white,
+                          //               fontWeight: FontWeight.w600,
+                          //               fontSize: 12,
+                          //             ),
+                          //           ),
+                          //         ],
+                          //       ),
+                          //     ),
+                          //   ),
+                          // ),
                         ),
                         const SizedBox(width: 8),
                         Icon(

@@ -1,45 +1,24 @@
-# TODO: Add Review Option and Improve UI Consistency
+# Review System Fixes
 
-## Plan Summary
-Add a review option in the customer's orders page for each order and order item, and improve UI consistency across all pages with a consistent theme.
+## Backend Changes
+- [x] Add /get_dish_rating endpoint in flask_backend/app.py
+- [x] Add /get_restaurant_rating endpoint in flask_backend/app.py
+- [x] Add optimized /get_top_dishes_with_ratings endpoint for faster loading
 
-## Steps to Complete
+## Frontend Changes
+- [x] Update foodie_go/lib/customer/home.dart to fetch and display dish ratings
+- [x] Update foodie_go/lib/customer/home.dart to fetch and display restaurant ratings
+- [x] Update foodie_go/lib/customer/order_details.dart to only show review buttons for delivered orders
+- [x] Update foodie_go/lib/customer/review_page.dart to require dishId and fix title
+- [x] Update home.dart to use optimized endpoint that loads ratings simultaneously
 
-### 1. Create Review Page
-- [x] Create `foodie_go/lib/customer/review_page.dart`
-  - Add form with rating (1-5 stars), comment text field, submit button
-  - Handle submission to 'reviews' table in Supabase
-  - Use consistent app colors from constants.dart
+## Performance Optimizations
+- [x] Optimized dish rating calculation by fetching all reviews for top dishes in one query
+- [x] Combined top ordered dishes and ratings loading into single API call
+- [x] Reduced database queries from N+1 to 2 queries for top dishes with ratings
 
-### 2. Update Orders Page
-- [x] Update `foodie_go/lib/customer/orders.dart`
-  - Add "Review Order" button for delivered orders in ListTile
-  - Navigate to ReviewPage with order_id on button press
-
-### 3. Update Order Details Page
-- [x] Update `foodie_go/lib/customer/order_details.dart`
-  - Add "Review Item" button for each item
-  - Navigate to ReviewPage with order_id and dish_id on button press
-
-### 4. Improve UI Consistency
-- [ ] Review and update UI in key pages for consistency:
-  - `foodie_go/lib/customer/homepage.dart` ✅
-  - `foodie_go/lib/customer/profile.dart`
-  - `foodie_go/lib/customer/cart.dart`
-  - `foodie_go/lib/customer/checkout.dart`
-  - `foodie_go/lib/customer/restraunts.dart`
-  - `foodie_go/lib/driver/driv_homepage.dart`
-  - `foodie_go/lib/driver/driver_profile.dart`
-  - `foodie_go/lib/restraunt/rest_homepage.dart`
-  - `foodie_go/lib/restraunt/menu.dart`
-  - `foodie_go/lib/restraunt/orders.dart`
-  - `foodie_go/lib/restraunt/payments.dart`
-  - `foodie_go/lib/restraunt/analytics_fixed.dart`
-  - `foodie_go/lib/restraunt/reviews.dart`
-- [ ] Ensure consistent use of AppColors, fonts, spacing, and layout
-
-### 5. Testing and Verification
-- [ ] Test review functionality
-- [ ] Verify reviews appear in restaurant reviews page
-- [ ] Check database schema for any issues
-- [ ] Ensure UI consistency across all pages
+## Testing
+- [ ] Test per-item reviews for completed orders
+- [ ] Test dish rating display in home page
+- [ ] Test restaurant average rating display
+- [ ] Test improved loading performance of top dishes section

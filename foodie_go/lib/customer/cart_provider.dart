@@ -64,6 +64,7 @@ class CartProvider with ChangeNotifier {
     final String? imageUrl = dish['image'] as String?;
     final String ownerId = (dish['user_id_res'] ?? '') as String;
     final String restaurantName = dish['restaurantName'] ?? 'Restaurant';
+    final String? restaurantAddress = dish['restaurantAddress'] as String?;
 
     if (_cartItems.containsKey(dishId)) {
       final existing = _cartItems[dishId] as Map<String, dynamic>;
@@ -74,6 +75,7 @@ class CartProvider with ChangeNotifier {
       existing['imageUrl'] = imageUrl;
       existing['restaurantName'] = restaurantName;
       existing['restaurant_id'] = ownerId;
+      existing['restaurantAddress'] = restaurantAddress;
       _cartItems[dishId] = existing;
     } else {
       _cartItems[dishId] = {
@@ -84,6 +86,7 @@ class CartProvider with ChangeNotifier {
         'imageUrl': imageUrl,
         'restaurantName': restaurantName,
         'restaurant_id': ownerId,
+        'restaurantAddress': restaurantAddress,
       };
     }
     _saveCart();
@@ -124,5 +127,47 @@ class CartProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('cart_items');
     notifyListeners();
+  }
+
+  // Get unique restaurants from cart items
+  List<Map<String, dynamic>> getUniqueRestaurants() {
+    final Map<String, Map<String, dynamic>> uniqueRestaurants = {};
+
+    for (final item in _cartItems.values) {
+      if (item is Map<String, dynamic>) {
+        final restaurantId = item['restaurant_id'] as String?;
+        final restaurantName = item['restaurantName'] as String?;
+        final restaurantAddress = item['restaurantAddress'] as String?;
+
+        if (restaurantId != null && restaurantId.isNotEmpty) {
+          uniqueRestaurants[restaurantId] = {
+            'restaurant_id': restaurantId,
+            'restaurantName': restaurantName ?? 'Unknown Restaurant',
+            'restaurantAddress': restaurantAddress ?? 'Address not available',
+          };
+        }
+      }
+    }
+
+    return uniqueRestaurants.values.toList();
+  }
+
+  // Get items grouped by restaurant
+  Map<String, List<Map<String, dynamic>>> getItemsByRestaurant() {
+    final Map<String, List<Map<String, dynamic>>> groupedItems = {};
+
+    for (final entry in _cartItems.entries) {
+      final item = entry.value as Map<String, dynamic>;
+      final restaurantId = item['restaurant_id'] as String?;
+
+      if (restaurantId != null && restaurantId.isNotEmpty) {
+        if (!groupedItems.containsKey(restaurantId)) {
+          groupedItems[restaurantId] = [];
+        }
+        groupedItems[restaurantId]!.add(item);
+      }
+    }
+
+    return groupedItems;
   }
 }

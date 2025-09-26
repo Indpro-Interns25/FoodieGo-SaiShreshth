@@ -58,14 +58,19 @@ class _ReviewPageState extends State<ReviewPage> with TickerProviderStateMixin {
         return;
       }
 
-      // Get order details to find restaurant_id
-      final order = await supabase
-          .from('orders')
-          .select('restaurant_id')
-          .eq('id', widget.orderId)
+      // Get dish details to find restaurant_id
+      if (widget.dishId == null) {
+        _showSnackBar('Dish ID is required for review', isError: true);
+        return;
+      }
+
+      final dish = await supabase
+          .from('dishes')
+          .select('user_id_res')
+          .eq('id', widget.dishId!)
           .single();
 
-      final restaurantId = order['restaurant_id'];
+      final restaurantId = dish['user_id_res'];
 
       // Insert review
       await supabase.from('reviews').insert({

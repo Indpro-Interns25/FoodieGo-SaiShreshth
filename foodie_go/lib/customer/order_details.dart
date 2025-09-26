@@ -92,7 +92,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       if (session == null) return;
 
       final response = await http.post(
-        Uri.parse('https://foodie-go-flask.vercel.app/confirm_delivery'),
+        Uri.parse('$flaskApiUrl/confirm_delivery'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${session.accessToken}',
@@ -267,53 +267,54 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                                   ],
                                 ),
                                 const SizedBox(height: 4),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.primary.withOpacity(0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: () {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) => ReviewPage(orderId: widget.orderId, dishId: dishId),
-                                          ),
-                                        );
-                                      },
+                                if (_order!['status'] == 'delivered')
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
                                       borderRadius: BorderRadius.circular(12),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.star_outline,
-                                              color: Colors.white,
-                                              size: 16,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primary.withOpacity(0.3),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        onTap: () {
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => ReviewPage(orderId: widget.orderId, dishId: dishId),
                                             ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Review',
-                                              style: TextStyle(
+                                          );
+                                        },
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.star_outline,
                                                 color: Colors.white,
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 12,
+                                                size: 16,
                                               ),
-                                            ),
-                                          ],
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Review',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
                               ],
                             ),
                           );

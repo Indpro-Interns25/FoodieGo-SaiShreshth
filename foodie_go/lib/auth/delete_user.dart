@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
+import '../constants.dart';
 
 Future<void> deleteGuestUserAccount(BuildContext context) async {
   final supabase = Supabase.instance.client;
@@ -58,7 +59,7 @@ Future<void> deleteGuestUserAccount(BuildContext context) async {
     // Delete Supabase auth user via Flask endpoint
     final accessToken = session.accessToken;
     final httpResponse = await http.post(
-      Uri.parse('https://foodie-go-flask.vercel.app/delete_user'),
+      Uri.parse('$flaskApiUrl/delete_user'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',

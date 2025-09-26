@@ -166,39 +166,42 @@ class _CheckoutPageState extends State<CheckoutPage> {
     });
 
     try {
-      // Fetch restaurant user_id from the first dish
-      String? restaurantUserId;
-      if (_cartItems.isNotEmpty) {
-        final firstDishId = _cartItems.keys.first;
-        try {
-          final dish = await Supabase.instance.client
-              .from('dishes')
-              .select('user_id_res')
-              .eq('id', firstDishId)
-              .single();
-          restaurantUserId = dish['user_id_res'];
-        } catch (e) {
-          debugPrint('Failed to fetch restaurant user_id: $e');
-        }
+      // Get unique restaurants from cart
+      final cartProvider = Provider.of<CartProvider>(context, listen: false);
+      final uniqueRestaurants = cartProvider.getUniqueRestaurants();
+      final itemsByRestaurant = cartProvider.getItemsByRestaurant();
+
+      if (uniqueRestaurants.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No restaurants found in cart'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
       }
 
-      final orderItems = _cartItems.entries.map((e) {
-        final dishId = e.key;
-        final item = e.value as Map<String, dynamic>;
-        return {
-          'dish_id': dishId,
-          'quantity': item['quantity'] ?? 1,
-          'price': item['price'],
-        };
-      }).toList();
+      // Prepare order items with restaurant_id
+      final orderItems = <Map<String, dynamic>>[];
+      for (final restaurant in uniqueRestaurants) {
+        final restaurantId = restaurant['restaurant_id'] as String;
+        final restaurantItems = itemsByRestaurant[restaurantId] ?? [];
+
+        for (final item in restaurantItems) {
+          orderItems.add({
+            'dish_id': item['id'],
+            'quantity': item['quantity'] ?? 1,
+            'price': item['price'],
+            'restaurant_id': restaurantId,
+          });
+        }
+      }
 
       final orderData = {
         'delivery_address': deliveryAddress,
         'status': 'placed',
+        'restaurant_ids': uniqueRestaurants.map((r) => r['restaurant_id']).toList(),
       };
-      if (restaurantUserId != null) {
-        orderData['user_id_res'] = restaurantUserId;
-      }
 
       final body = jsonEncode({
         'order': orderData,
@@ -207,7 +210,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       final response = await http
           .post(
-            Uri.parse('https://foodie-go-flask.vercel.app/create_order'),
+            Uri.parse('$flaskApiUrl/create_order'),
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',

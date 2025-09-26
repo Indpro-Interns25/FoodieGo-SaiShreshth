@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'cart_provider.dart';
 import 'search_provider.dart';
 import '../constants.dart';
@@ -19,20 +21,32 @@ class HomeState extends State<Home> {
   final FocusNode _searchFocus = FocusNode();
   bool isLoading = false;
 
-  // dishes state
-  List<dynamic> allDishes = [];
-  List<dynamic> displayedDishes = [];
-  bool isLoadingDishes = false;
   // Map user_id_res -> restaurant name for quick lookup
   final Map<String, String> _restaurantNameByUserId = {};
 
+  // Popular dishes state
+  List<dynamic> popularDishes = [];
+  bool isLoadingPopularDishes = false;
+
   final Map<String, int> _dishQuantities = {}; // transient qty per dish card
+  bool _showSearchResults = false;
+
+  // Ratings state
+  final Map<String, Map<String, dynamic>> _dishRatings = {}; // dish_id -> {average_rating, review_count}
+  final Map<String, Map<String, dynamic>> _restaurantRatings = {}; // restaurant_id -> {average_rating, review_count}
+
+  // Search results state
+  List<dynamic> searchResults = [];
+  List<dynamic> searchDishes = [];
+  List<dynamic> allDishes = []; // Fallback for when popular dishes are not available
+  bool isLoadingAllDishes = false;
 
   @override
   void initState() {
     super.initState();
     _searchFocus.addListener(() => setState(() {}));
     _refreshAll();
+    _fetchPopularDishes();
   }
 
   @override
@@ -47,7 +61,7 @@ class HomeState extends State<Home> {
     _searchFocus.unfocus();
     setState(() {
       displayedRestaurants = allRestaurants;
-      displayedDishes = allDishes;
+      _showSearchResults = false;
     });
   }
 
@@ -66,7 +80,8 @@ class HomeState extends State<Home> {
 
   Future<void> _refreshAll() async {
     await _fetchRestaurants();
-    // _fetchRestaurants triggers dishes fetch after restaurants are loaded
+    await _fetchPopularDishes();
+    await _fetchAllDishes(); // Fetch all dishes as fallback
   }
 
   Future<void> _fetchRestaurants() async {
@@ -104,14 +119,8 @@ class HomeState extends State<Home> {
         isLoading = false;
       });
 
-      if (userIds.isNotEmpty) {
-        await _fetchDishesForUserIds(userIds);
-      } else {
-        setState(() {
-          allDishes = [];
-          displayedDishes = [];
-        });
-      }
+      // Fetch ratings for restaurants
+      await _fetchRestaurantRatings(userIds);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -127,46 +136,233 @@ class HomeState extends State<Home> {
     }
   }
 
-  Future<void> _fetchDishesForUserIds(List<String> userIds) async {
+
+
+  Future<void> _fetchPopularDishes() async {
     setState(() {
-      isLoadingDishes = true;
+      isLoadingPopularDishes = true;
     });
     try {
-      final response = await supabase
-          .from('dishes')
-          .select()
-          .inFilter('user_id_res', userIds)
-          .eq('availability', true);
+      final session = supabase.auth.currentSession;
+      if (session == null) {
+        setState(() {
+          isLoadingPopularDishes = false;
+        });
+        return;
+      }
+
+      // Use the new optimized endpoint that includes ratings
+      final response = await http.get(
+        Uri.parse('$flaskApiUrl/get_top_dishes_with_ratings'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final dishes = data['dishes'] as List<dynamic>? ?? [];
+
+        if (!mounted) return;
+        setState(() {
+          popularDishes = dishes;
+          isLoadingPopularDishes = false;
+        });
+
+        // Initialize quantities for popular dishes
+        for (final d in popularDishes) {
+          final id = (d['id'] ?? '').toString();
+          if (id.isNotEmpty && !_dishQuantities.containsKey(id)) {
+            _dishQuantities[id] = 1;
+          }
+        }
+
+        // Store ratings directly from the response (no need for separate API calls)
+        for (final dish in dishes) {
+          final dishId = dish['id'].toString();
+          if (dishId.isNotEmpty) {
+            setState(() {
+              _dishRatings[dishId] = {
+                'average_rating': dish['average_rating'] ?? 0.0,
+                'review_count': dish['review_count'] ?? 0,
+              };
+            });
+          }
+        }
+      } else {
+        if (!mounted) return;
+        setState(() {
+          isLoadingPopularDishes = false;
+        });
+        debugPrint('Error fetching popular dishes: ${response.body}');
+        // Fallback to fetch all dishes when popular dishes endpoint fails
+        await _fetchAllDishes();
+      }
+    } catch (e) {
       if (!mounted) return;
       setState(() {
-        allDishes = response as List<dynamic>;
-        displayedDishes = allDishes;
-        isLoadingDishes = false;
+        isLoadingPopularDishes = false;
       });
-      // Initialize default quantities for new dishes
+      debugPrint('Error fetching popular dishes: $e');
+      // Fallback to fetch all dishes when popular dishes endpoint fails
+      await _fetchAllDishes();
+    }
+  }
+
+  Future<void> _fetchAllDishes() async {
+    setState(() {
+      isLoadingAllDishes = true;
+    });
+    try {
+      final session = supabase.auth.currentSession;
+      if (session == null) {
+        setState(() {
+          isLoadingAllDishes = false;
+        });
+        return;
+      }
+
+      // Fetch all dishes from Supabase directly
+      final response = await supabase
+          .from('dishes')
+          .select('*, restaurant_profiles(restaurant_name)')
+          .limit(50); // Limit to prevent too many results
+
+      if (!mounted) return;
+
+      final dishes = response as List<dynamic>? ?? [];
+
+      // Add restaurant names to dishes
+      for (final dish in dishes) {
+        final restaurantId = dish['user_id_res'];
+        if (restaurantId != null) {
+          try {
+            final restaurantResponse = await supabase
+                .from('restaurant_profiles')
+                .select('restaurant_name')
+                .eq('user_id', restaurantId)
+                .single();
+
+            dish['restaurantName'] = restaurantResponse['restaurant_name'] ?? 'Unknown Restaurant';
+          } catch (e) {
+            dish['restaurantName'] = 'Unknown Restaurant';
+          }
+        } else {
+          dish['restaurantName'] = 'Unknown Restaurant';
+        }
+      }
+
+      setState(() {
+        allDishes = dishes;
+        isLoadingAllDishes = false;
+      });
+
+      // Initialize quantities for all dishes
       for (final d in allDishes) {
         final id = (d['id'] ?? '').toString();
         if (id.isNotEmpty && !_dishQuantities.containsKey(id)) {
           _dishQuantities[id] = 1;
         }
       }
+
+      // Fetch ratings for all dishes
+      await _fetchDishRatings(dishes.map((d) => d['id'].toString()).where((id) => id.isNotEmpty).toList());
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        isLoadingDishes = false;
+        isLoadingAllDishes = false;
       });
-      debugPrint('Error fetching dishes: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to load dishes'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      debugPrint('Error fetching all dishes: $e');
     }
   }
 
-  void _filterAll(String query) {
+  Future<void> _fetchDishRatings(List<String> dishIds) async {
+    try {
+      final session = supabase.auth.currentSession;
+      if (session == null) return;
+
+      for (final dishId in dishIds) {
+        if (_dishRatings.containsKey(dishId)) continue; // Skip if already fetched
+
+        try {
+          final response = await http.get(
+            Uri.parse('$flaskApiUrl/get_dish_rating?dish_id=$dishId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ${session.accessToken}',
+            },
+          );
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            setState(() {
+              _dishRatings[dishId] = {
+                'average_rating': data['average_rating'] ?? 0.0,
+                'review_count': data['review_count'] ?? 0,
+              };
+            });
+          }
+        } catch (e) {
+          debugPrint('Error fetching rating for dish $dishId: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in _fetchDishRatings: $e');
+    }
+  }
+
+  Future<void> _fetchRestaurantRatings(List<String> restaurantIds) async {
+    try {
+      final session = supabase.auth.currentSession;
+      if (session == null) return;
+
+      for (final restaurantId in restaurantIds) {
+        if (_restaurantRatings.containsKey(restaurantId)) continue; // Skip if already fetched
+
+        try {
+          final response = await http.get(
+            Uri.parse('$flaskApiUrl/get_restaurant_rating?restaurant_id=$restaurantId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ${session.accessToken}',
+            },
+          );
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            setState(() {
+              _restaurantRatings[restaurantId] = {
+                'average_rating': data['average_rating'] ?? 0.0,
+                'review_count': data['review_count'] ?? 0,
+              };
+            });
+          }
+        } catch (e) {
+          debugPrint('Error fetching rating for restaurant $restaurantId: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in _fetchRestaurantRatings: $e');
+    }
+  }
+
+  Future<void> _searchAll(String query) async {
     final lower = query.toLowerCase();
+
+    if (query.trim().isEmpty) {
+      setState(() {
+        displayedRestaurants = allRestaurants;
+        searchResults = [];
+        searchDishes = [];
+        _showSearchResults = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _showSearchResults = true;
+    });
 
     // Filter restaurants
     final filteredRestaurants = allRestaurants.where((r) {
@@ -176,37 +372,34 @@ class HomeState extends State<Home> {
           desc.toLowerCase().contains(lower);
     }).toList();
 
-    // Filter dishes (by dish name and restaurant name)
-    final filteredDishes = allDishes.where((d) {
-      final dishName = (d['name'] ?? '') as String;
-      final ownerId = (d['user_id_res'] ?? '') as String;
-      final restName = _restaurantNameByUserId[ownerId] ?? '';
-      return dishName.toLowerCase().contains(lower) ||
-          restName.toLowerCase().contains(lower);
+    // Filter dishes from popular dishes first
+    List<dynamic> filteredDishes = popularDishes.where((d) {
+      final name = (d['name'] ?? '') as String;
+      final restaurantName = (d['restaurantName'] ?? '') as String;
+      return name.toLowerCase().contains(lower) ||
+          restaurantName.toLowerCase().contains(lower);
     }).toList();
 
-    // Also include restaurants that offer the filtered dishes
-    final Set<String> ownerIds = filteredDishes
-        .map((d) => (d['user_id_res'] ?? '') as String)
-        .where((id) => id.isNotEmpty)
-        .toSet();
+    // If no dishes found in popular dishes and we have all dishes loaded, search there too
+    if (filteredDishes.isEmpty && allDishes.isNotEmpty) {
+      final allDishesFiltered = allDishes.where((d) {
+        final name = (d['name'] ?? '') as String;
+        final restaurantName = (d['restaurantName'] ?? '') as String;
+        return name.toLowerCase().contains(lower) ||
+            restaurantName.toLowerCase().contains(lower);
+      }).toList();
 
-    final Map<String, Map<String, dynamic>> byUserId = {
-      for (final r in filteredRestaurants)
-        ((r['user_id'] ?? r['id'] ?? '') as String?) ?? '':
-            r as Map<String, dynamic>,
-    }..removeWhere((key, value) => key.isEmpty);
+      // Combine popular dishes results with all dishes results (avoid duplicates)
+      final popularDishIds = popularDishes.map((d) => d['id']).toSet();
+      final uniqueAllDishes = allDishesFiltered.where((d) => !popularDishIds.contains(d['id'])).toList();
 
-    for (final r in allRestaurants) {
-      final String? uid = (r['user_id'] ?? r['id'] ?? '') as String?;
-      if (uid != null && ownerIds.contains(uid)) {
-        byUserId.putIfAbsent(uid, () => r as Map<String, dynamic>);
-      }
+      filteredDishes = [...filteredDishes, ...uniqueAllDishes];
     }
 
     setState(() {
-      displayedRestaurants = byUserId.values.toList();
-      displayedDishes = filteredDishes;
+      displayedRestaurants = filteredRestaurants;
+      searchResults = filteredRestaurants;
+      searchDishes = filteredDishes;
     });
   }
 
@@ -216,7 +409,7 @@ class HomeState extends State<Home> {
     if (searchProvider.searchQuery.isNotEmpty &&
         _searchController.text != searchProvider.searchQuery) {
       _searchController.text = searchProvider.searchQuery;
-      _filterAll(searchProvider.searchQuery);
+      _searchAll(searchProvider.searchQuery);
     }
 
     final bool isSearching =
@@ -276,9 +469,9 @@ class HomeState extends State<Home> {
                         child: TextField(
                           controller: _searchController,
                           focusNode: _searchFocus,
-                          onChanged: _filterAll,
+                          onChanged: _searchAll,
                           decoration: InputDecoration(
-                            hintText: 'Search dishes or restaurants',
+                            hintText: 'Search restaurants and dishes',
                             prefixIcon: Icon(Icons.search),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(15),
@@ -307,9 +500,7 @@ class HomeState extends State<Home> {
                               foregroundColor: AppColors.primary,
                               padding: EdgeInsets.zero,
                             ),
-                            onPressed: (isLoading || isLoadingDishes)
-                                ? null
-                                : _refreshAll,
+                            onPressed: isLoading ? null : _refreshAll,
                             child: Icon(Icons.refresh),
                           ),
                         ),
@@ -318,118 +509,217 @@ class HomeState extends State<Home> {
                   ),
                 ),
 
-                // Available Dishes Section FIRST (filtered list)
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Available Dishes',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                // Most Popular Dishes Section FIRST (only show when not searching)
+                if (!_showSearchResults)
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.trending_up,
+                              color: Colors.green,
+                              size: 24,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Top Ordered',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Based on orders',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      SizedBox(height: 10),
-                      if (isLoadingDishes)
-                        Center(
-                          child: Padding(
+                        SizedBox(height: 10),
+                        if (isLoadingPopularDishes || isLoadingAllDishes)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else if (popularDishes.isEmpty)
+                          Padding(
                             padding: const EdgeInsets.all(16.0),
-                            child: CircularProgressIndicator(),
+                            child: Text(
+                              'No orders yet',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                          )
+                        else
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: NeverScrollableScrollPhysics(),
+                            itemCount: popularDishes.length > 3 ? 3 : popularDishes.length,
+                            itemBuilder: (context, index) {
+                              final d = popularDishes[index] as Map<String, dynamic>;
+                              final dishId = (d['id'] ?? '').toString();
+                              final dishName = (d['name'] ?? 'Dish') as String;
+                              final price = d['price'];
+                              final image = d['image'] as String?;
+                              final ownerId = (d['user_id_res'] ?? '') as String;
+                              final restName = (d['restaurantName'] ?? 'Restaurant') as String;
+                              final qty = _dishQuantities[dishId] ?? 1;
+                              return _buildTopOrderedDishCard(
+                                dishId: dishId,
+                                dishName: dishName,
+                                restaurantName: restName,
+                                price: price,
+                                imageUrl: image,
+                                quantity: qty,
+                                ownerId: ownerId,
+                                orderCount: d['order_count'] ?? 0,
+                              );
+                            },
                           ),
-                        )
-                      else if (displayedDishes.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text(
-                            'No dishes available',
-                            style: TextStyle(color: AppColors.textSecondary),
-                          ),
-                        )
-                      else
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: NeverScrollableScrollPhysics(),
-                          itemCount: isSearching ? displayedDishes.length : (displayedDishes.length > 3 ? 3 : displayedDishes.length),
-                          itemBuilder: (context, index) {
-                            final d =
-                                displayedDishes[index] as Map<String, dynamic>;
-                            final dishId = (d['id'] ?? '').toString();
-                            final dishName = (d['name'] ?? 'Dish') as String;
-                            final price = d['price'];
-                            final image = d['image'] as String?;
-                            final ownerId = (d['user_id_res'] ?? '') as String;
-                            final restName =
-                                _restaurantNameByUserId[ownerId] ??
-                                'Restaurant';
-                            final qty = _dishQuantities[dishId] ?? 1;
-                            return _buildDishCard(
-                              dishId: dishId,
-                              dishName: dishName,
-                              restaurantName: restName,
-                              price: price,
-                              imageUrl: image,
-                              quantity: qty,
-                              ownerId: ownerId,
-                            );
-                          },
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
-                // Popular Restaurants Section SECOND (filtered list)
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Popular Restaurants',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+
+
+                // Search Results or Popular Restaurants Section
+                if (_showSearchResults)
+                  // Show search results
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Search Results',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      SizedBox(height: 10),
-                      if (isLoading)
-                        Center(
-                          child: Padding(
+                        SizedBox(height: 10),
+                        // Show dishes first if any found
+                        if (searchDishes.isNotEmpty) ...[
+                          Text(
+                            'Dishes',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: NeverScrollableScrollPhysics(),
+                            itemCount: searchDishes.length,
+                            itemBuilder: (context, index) {
+                              final d = searchDishes[index] as Map<String, dynamic>;
+                              final dishId = (d['id'] ?? '').toString();
+                              final dishName = (d['name'] ?? 'Dish') as String;
+                              final price = d['price'];
+                              final image = d['image'] as String?;
+                              final ownerId = (d['user_id_res'] ?? '') as String;
+                              final restName = (d['restaurantName'] ?? 'Restaurant') as String;
+                              final qty = _dishQuantities[dishId] ?? 1;
+                              return _buildTopOrderedDishCard(
+                                dishId: dishId,
+                                dishName: dishName,
+                                restaurantName: restName,
+                                price: price,
+                                imageUrl: image,
+                                quantity: qty,
+                                ownerId: ownerId,
+                                orderCount: d['order_count'] ?? 0,
+                              );
+                            },
+                          ),
+                          SizedBox(height: 16),
+                        ],
+                        // Show restaurants if any found
+                        if (searchResults.isNotEmpty) ...[
+                          Text(
+                            'Restaurants',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: NeverScrollableScrollPhysics(),
+                            itemCount: searchResults.length,
+                            itemBuilder: (context, index) {
+                              final r = searchResults[index] as Map<String, dynamic>;
+                              return _buildRestaurantCard(r);
+                            },
+                          ),
+                        ],
+                        // Show no results message if both are empty
+                        if (searchResults.isEmpty && searchDishes.isEmpty)
+                          Padding(
                             padding: const EdgeInsets.all(16.0),
-                            child: CircularProgressIndicator(),
+                            child: Text(
+                              'No results found',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
                           ),
-                        )
-                      else if (displayedRestaurants.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text(
-                            'No restaurants found',
-                            style: TextStyle(color: AppColors.textSecondary),
+                      ],
+                    ),
+                  )
+                else
+                  // Show popular restaurants when not searching
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Popular Restaurants',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
                           ),
-                        )
-                      else
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: NeverScrollableScrollPhysics(),
-                          itemCount: displayedRestaurants.length,
-                          itemBuilder: (context, index) {
-                            final r =
-                                displayedRestaurants[index]
-                                    as Map<String, dynamic>;
-                            final name =
-                                (r['restaurant_name'] ?? 'Restaurant')
-                                    as String;
-                            final desc =
-                                (r['description'] ?? 'Delicious food awaits!')
-                                    as String;
-                            final imageUrl = r['image_url'] as String?;
-                            return _buildRestaurantCard(name, desc, imageUrl);
-                          },
                         ),
-                    ],
+                        SizedBox(height: 10),
+                        if (isLoading)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else if (displayedRestaurants.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              'No restaurants found',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                          )
+                        else
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: NeverScrollableScrollPhysics(),
+                            itemCount: displayedRestaurants.length,
+                            itemBuilder: (context, index) {
+                              final r = displayedRestaurants[index] as Map<String, dynamic>;
+                              return _buildRestaurantCard(r);
+                            },
+                          ),
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -438,53 +728,284 @@ class HomeState extends State<Home> {
     );
   }
 
-  Widget _buildRestaurantCard(String name, String subtitle, String? imageUrl) {
+  Widget _buildRestaurantCard(dynamic r) {
+    final name = (r['restaurant_name'] ?? 'Restaurant') as String;
+    final subtitle = (r['description'] ?? 'Delicious food awaits!') as String;
+    final imageUrl = r['image_url'] as String?;
+    final restaurantId = (r['user_id'] ?? '').toString();
+
     return Card(
       margin: EdgeInsets.symmetric(vertical: 8),
       child: InkWell(
         onTap: () {
           _searchController.text = name;
-          _filterAll(name);
+          _searchAll(name);
         },
         child: Padding(
           padding: const EdgeInsets.all(12.0),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: imageUrl != null && imageUrl.isNotEmpty
-                      ? Image.network(
-                          imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _imageFallback(),
-                        )
-                      : _imageFallback(),
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 80,
+                      height: 80,
+                      child: imageUrl != null && imageUrl.isNotEmpty
+                          ? Image.network(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _imageFallback(),
+                            )
+                          : _imageFallback(),
                     ),
-                    SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: AppColors.textSecondary),
+                        ),
+                        // Restaurant rating display
+                        if (_restaurantRatings.containsKey(restaurantId)) ...[
+                          SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.star, color: Colors.amber, size: 16),
+                              SizedBox(width: 4),
+                              Text(
+                                '${(_restaurantRatings[restaurantId]!['average_rating'] as double).toStringAsFixed(1)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.amber[700],
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                '(${_restaurantRatings[restaurantId]!['review_count']} reviews)',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopOrderedDishCard({
+    required String dishId,
+    required String dishName,
+    required String restaurantName,
+    required dynamic price,
+    required String? imageUrl,
+    required int quantity,
+    required String ownerId,
+    required int orderCount,
+  }) {
+    final cartProvider = context.watch<CartProvider>();
+    final bool inCart = cartProvider.cartItems.containsKey(dishId);
+    final int inCartQty = inCart
+        ? ((cartProvider.cartItems[dishId] as Map<String, dynamic>)['quantity'] as int? ??
+              0)
+        : 0;
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: imageUrl != null && imageUrl.isNotEmpty
+                        ? Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _imageFallback(),
+                          )
+                        : _imageFallback(),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dishName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        restaurantName,
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        '₹ ${price?.toString() ?? '-'}',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      SizedBox(height: 4),
+                      // Rating display
+                      if (_dishRatings.containsKey(dishId)) ...[
+                        Row(
+                          children: [
+                            Icon(Icons.star, color: Colors.amber, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              '${(_dishRatings[dishId]!['average_rating'] as double).toStringAsFixed(1)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.amber[700],
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              '(${_dishRatings[dishId]!['review_count']} reviews)',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 4),
+                      ],
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: orderCount > 0 ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: orderCount > 0 ? Colors.green.withOpacity(0.3) : Colors.blue.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          orderCount > 0 ? 'Ordered ${orderCount} times' : 'Featured Dish',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: orderCount > 0 ? Colors.green : Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Left: Quantity selector (not in cart) OR compact Added tag (in cart)
+                inCart
+                    ? Chip(
+                        label: Text(
+                          inCartQty > 0 ? 'Added • $inCartQty' : 'Added',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        avatar: Icon(
+                          Icons.check_circle,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
+                        backgroundColor: AppColors.surface,
+                        shape: StadiumBorder(
+                          side: BorderSide(
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      )
+                    : Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => _decrementDishQty(dishId),
+                            icon: Icon(Icons.remove_circle_outline),
+                          ),
+                          Text('${_dishQuantities[dishId] ?? quantity}'),
+                          IconButton(
+                            onPressed: () => _incrementDishQty(dishId),
+                            icon: Icon(Icons.add_circle_outline),
+                          ),
+                        ],
+                      ),
+                // Add/Added + Remove controls
+                inCart
+                    ? Row(
+                        children: [
+                          // Right side shows only Remove when already in cart
+                          TextButton.icon(
+                            onPressed: () => cartProvider.removeFromCart(dishId),
+                            icon: const Icon(Icons.remove_shopping_cart),
+                            label: const Text('Remove'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.redAccent,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ],
+                      )
+                    : ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () {
+                          final dish = {
+                            'id': dishId,
+                            'name': dishName,
+                            'price': price,
+                            'image': imageUrl,
+                            'user_id_res': ownerId,
+                            'restaurantName': restaurantName,
+                          };
+                          cartProvider.addToCart(dish, _dishQuantities[dishId] ?? 1);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Added to cart')),
+                          );
+                        },
+                        icon: Icon(Icons.add_shopping_cart),
+                        label: Text('Add to cart'),
+                      ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -551,6 +1072,32 @@ class HomeState extends State<Home> {
                         '₹ ${price?.toString() ?? '-'}',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
+                      SizedBox(height: 4),
+                      // Rating display
+                      if (_dishRatings.containsKey(dishId)) ...[
+                        Row(
+                          children: [
+                            Icon(Icons.star, color: Colors.amber, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              '${(_dishRatings[dishId]!['average_rating'] as double).toStringAsFixed(1)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.amber[700],
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              '(${_dishRatings[dishId]!['review_count']} reviews)',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

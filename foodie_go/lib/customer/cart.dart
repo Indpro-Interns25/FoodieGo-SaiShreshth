@@ -34,36 +34,9 @@ class CartPage extends StatelessWidget {
           : Column(
               children: [
                 Expanded(
-                  child: ListView.separated(
+                  child: ListView(
                     padding: const EdgeInsets.all(16),
-                    itemCount: cartProvider.cartItems.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final key = cartProvider.cartItems.keys.elementAt(index);
-                      final item = cartProvider.cartItems[key] as Map<String, dynamic>;
-                      final name = (item['name'] ?? 'Dish') as String;
-                      final restaurant =
-                          (item['restaurantName'] ?? 'Restaurant') as String;
-                      final price = item['price'];
-                      final qty = (item['quantity'] ?? 1) as int;
-                      final imageUrl = item['imageUrl'] as String?;
-                      return _CartItemTile(
-                        dishId: key,
-                        name: name,
-                        restaurant: restaurant,
-                        price: price,
-                        quantity: qty,
-                        imageUrl: imageUrl,
-                        onInc: () => cartProvider.incrementQuantity(key),
-                        onDec: () => cartProvider.decrementQuantity(key),
-                        onRemove: () {
-                          cartProvider.removeFromCart(key);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Item removed from cart')),
-                          );
-                        },
-                      );
-                    },
+                    children: _buildRestaurantGroups(context, cartProvider),
                   ),
                 ),
                 _CartSummary(
@@ -82,6 +55,87 @@ class CartPage extends StatelessWidget {
               ],
             ),
     );
+  }
+
+  List<Widget> _buildRestaurantGroups(BuildContext context, CartProvider cartProvider) {
+    final itemsByRestaurant = cartProvider.getItemsByRestaurant();
+    final uniqueRestaurants = cartProvider.getUniqueRestaurants();
+    final widgets = <Widget>[];
+
+    for (final restaurant in uniqueRestaurants) {
+      final restaurantId = restaurant['restaurant_id'] as String;
+      final restaurantName = restaurant['restaurantName'] as String;
+      final restaurantAddress = restaurant['restaurantAddress'] as String;
+      final restaurantItems = itemsByRestaurant[restaurantId] ?? [];
+
+      // Add restaurant header
+      widgets.add(
+        Container(
+          padding: const EdgeInsets.all(12),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                restaurantName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                restaurantAddress,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      // Add items for this restaurant
+      for (final item in restaurantItems) {
+        final dishId = item['id'] as String;
+        final name = (item['name'] ?? 'Dish') as String;
+        final price = item['price'];
+        final qty = (item['quantity'] ?? 1) as int;
+        final imageUrl = item['imageUrl'] as String?;
+
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _CartItemTile(
+              dishId: dishId,
+              name: name,
+              restaurant: restaurantName,
+              price: price,
+              quantity: qty,
+              imageUrl: imageUrl,
+              onInc: () => cartProvider.incrementQuantity(dishId),
+              onDec: () => cartProvider.decrementQuantity(dishId),
+              onRemove: () {
+                cartProvider.removeFromCart(dishId);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Item removed from cart')),
+                );
+              },
+            ),
+          ),
+        );
+      }
+
+      // Add spacing between restaurants
+      widgets.add(const SizedBox(height: 16));
+    }
+
+    return widgets;
   }
 }
 

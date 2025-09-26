@@ -14,8 +14,10 @@ class DriverOrders extends StatefulWidget {
 
 class _DriverOrdersState extends State<DriverOrders> {
   final supabase = Supabase.instance.client;
-  List<dynamic> orders = [];
+  List<Map<String, dynamic>> orders = [];
   Timer? _timer;
+  // Track acquired restaurants per order: Map<orderId, Set<restaurantId>>
+  Map<String, Set<String>> acquiredRestaurants = {};
 
   @override
   void initState() {
@@ -55,7 +57,7 @@ class _DriverOrdersState extends State<DriverOrders> {
           .from('orders')
           .select('*, order_items(*)')
           .filter('user_id_dri', 'is', null)
-          .eq('status', 'order called for delivery');
+          .filter('status', 'in', '(confirmed,"order called for delivery")');
 
       // Combine the lists
       final data = [...assignedData, ...unassignedData];
@@ -90,6 +92,42 @@ class _DriverOrdersState extends State<DriverOrders> {
         }
       }
 
+      // Fetch restaurant addresses for all orders (multi and single restaurant)
+      for (var order in data) {
+        final restaurantIds = order['restaurant_ids'];
+        final userIdRes = order['user_id_res'];
+        List<String> idsToFetch = [];
+
+        if (restaurantIds != null && restaurantIds is List && restaurantIds.isNotEmpty) {
+          idsToFetch = List<String>.from(restaurantIds);
+        } else if (userIdRes != null) {
+          // Backward compatibility for single restaurant orders without restaurant_ids
+          idsToFetch = [userIdRes];
+        }
+
+        if (idsToFetch.isNotEmpty) {
+          try {
+            final response = await http.post(
+              Uri.parse('$flaskApiUrl/get_restaurant_addresses'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ${supabase.auth.currentSession?.accessToken}',
+              },
+              body: jsonEncode({
+                'restaurant_ids': idsToFetch,
+              }),
+            );
+
+            if (response.statusCode == 200) {
+              final addressData = jsonDecode(response.body);
+              order['restaurant_addresses'] = addressData['addresses'];
+            }
+          } catch (e) {
+            print('Error fetching restaurant addresses: $e');
+          }
+        }
+      }
+
       // Sort orders: assigned orders first (descending by id), then unassigned orders (descending by id)
       data.sort((a, b) {
         final aAssigned = a['user_id_dri'] == supabase.auth.currentUser?.id;
@@ -101,8 +139,15 @@ class _DriverOrdersState extends State<DriverOrders> {
 
       if (!mounted) return;
       setState(() {
-        orders = data as List<dynamic>;
+        orders = data;
       });
+
+      // Sync acquired restaurants from database
+      for (var order in orders) {
+        final orderId = order['id'] as String;
+        final acquired = order['acquired_restaurants'] as List<dynamic>? ?? [];
+        acquiredRestaurants[orderId] = Set<String>.from(acquired.map((e) => e.toString()));
+      }
     } catch (e) {
       print('Exception fetching orders: $e');
     }
@@ -119,7 +164,7 @@ class _DriverOrdersState extends State<DriverOrders> {
       if (session == null) return;
 
       final response = await http.post(
-        Uri.parse('https://foodie-go-flask.vercel.app/update_order_status_driver'),
+        Uri.parse('$flaskApiUrl/update_order_status_driver'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${session.accessToken}',
@@ -144,7 +189,7 @@ class _DriverOrdersState extends State<DriverOrders> {
     }
   }
 
-  Future<void> acceptOrder(String orderId) async {
+  Future<void> acquireRestaurant(String orderId, String restaurantId) async {
     setState(() {
       _updatingStatus = true;
     });
@@ -153,7 +198,158 @@ class _DriverOrdersState extends State<DriverOrders> {
       if (session == null) return;
 
       final response = await http.post(
-        Uri.parse('https://foodie-go-flask.vercel.app/accept_order'),
+        Uri.parse('$flaskApiUrl/acquire_restaurant_for_order'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+        },
+        body: jsonEncode({
+          'order_id': orderId,
+          'restaurant_id': restaurantId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        // Update local tracking
+        setState(() {
+          acquiredRestaurants.putIfAbsent(orderId, () => {}).add(restaurantId);
+        });
+
+        // Check if all restaurants are acquired for this order
+        final matchingOrders = orders.where((o) => o['id'] == orderId).toList();
+        if (matchingOrders.isNotEmpty) {
+          final order = matchingOrders.first;
+          final restaurantIds = order['restaurant_ids'] as List<dynamic>? ?? [];
+          final acquired = acquiredRestaurants[orderId] ?? {};
+          if (restaurantIds.every((rid) => acquired.contains(rid))) {
+            // All restaurants acquired, auto-progress to 'waiting for delivery'
+            await updateOrderStatus(orderId, 'waiting for delivery');
+          }
+        }
+      } else {
+        print('Error acquiring restaurant: ${response.body}');
+      }
+    } catch (e) {
+      print('Error acquiring restaurant: $e');
+    } finally {
+      setState(() {
+        _updatingStatus = false;
+      });
+    }
+  }
+
+  Future<void> pickupItems(String orderId, String restaurantId) async {
+    setState(() {
+      _updatingStatus = true;
+    });
+    try {
+      final session = supabase.auth.currentSession;
+      if (session == null) return;
+
+      final response = await http.post(
+        Uri.parse('$flaskApiUrl/pickup_items'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+        },
+        body: jsonEncode({
+          'order_id': orderId,
+          'restaurant_id': restaurantId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        await fetchOrders();
+      } else {
+        print('Error picking up items: ${response.body}');
+      }
+    } catch (e) {
+      print('Error picking up items: $e');
+    } finally {
+      setState(() {
+        _updatingStatus = false;
+      });
+    }
+  }
+
+  Future<void> acceptOrder(String orderId) async {
+    // Find the order to get addresses
+    final matchingOrders = orders.where((o) => o['id'] == orderId).toList();
+    if (matchingOrders.isEmpty) return;
+    final order = matchingOrders.first;
+
+    final restaurantAddresses = order['restaurant_addresses'] as List<dynamic>? ?? [];
+
+    // Show confirmation dialog with pickup addresses
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Accept Order'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Pickup Locations:', style: TextStyle(fontWeight: FontWeight.bold)),
+                SizedBox(height: 8),
+                if (restaurantAddresses.isEmpty)
+                  Text('No pickup addresses available')
+                else
+                  ...restaurantAddresses.map((restaurant) {
+                    final restaurantName = restaurant['restaurant_name'] ?? 'Unknown Restaurant';
+                    final address = restaurant['address'] ?? 'Address not provided';
+                    return Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.store, size: 16, color: AppColors.primary),
+                          SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '$restaurantName: $address',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                SizedBox(height: 16),
+                Text('Do you want to accept this order?', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Accept'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _updatingStatus = true;
+    });
+    try {
+      final session = supabase.auth.currentSession;
+      if (session == null) return;
+
+      final response = await http.post(
+        Uri.parse('$flaskApiUrl/accept_order'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${session.accessToken}',
@@ -181,31 +377,12 @@ class _DriverOrdersState extends State<DriverOrders> {
     final orderId = order['id'] as String;
     final status = order['status'] as String? ?? 'order called for delivery';
     final deliveryAddress = order['delivery_address'] as String? ?? '';
-    final pickupAddress = 'Restaurant address not available';
     final items = order['order_items'] as List<dynamic>? ?? [];
     final isAssigned = order['user_id_dri'] != null;
     final isAssignedToCurrent = order['user_id_dri'] == supabase.auth.currentUser?.id;
-
-    String nextStatus;
-    String buttonText;
-    VoidCallback? onPressed;
-    if (!isAssigned && status == 'order called for delivery') {
-      nextStatus = 'waiting for delivery';
-      buttonText = 'Accept';
-      onPressed = () => acceptOrder(orderId);
-    } else if (status == 'order called for delivery') {
-      nextStatus = 'waiting for delivery';
-      buttonText = 'Picked Up';
-      onPressed = () => updateOrderStatus(orderId, nextStatus);
-    } else if (status == 'waiting for delivery') {
-      nextStatus = 'waiting for confirmation';
-      buttonText = 'Delivered';
-      onPressed = () => updateOrderStatus(orderId, nextStatus);
-    } else {
-      nextStatus = status; // no change
-      buttonText = '';
-      onPressed = null;
-    }
+    final restaurantAddresses = order['restaurant_addresses'] as List<dynamic>? ?? [];
+    final restaurantIds = order['restaurant_ids'] as List<dynamic>? ?? [];
+    final isSingleRestaurant = restaurantIds.length == 1;
 
     Color? cardColor;
     if (isAssignedToCurrent) {
@@ -232,109 +409,201 @@ class _DriverOrdersState extends State<DriverOrders> {
                     color: AppColors.primary)),
             SizedBox(height: 4),
             Text('Delivery Address: $deliveryAddress'),
-            SizedBox(height: 4),
-            Text('Pickup Address: $pickupAddress'),
             SizedBox(height: 8),
+
+            // Restaurant pickup addresses
+            if (restaurantAddresses.isNotEmpty) ...[
+              Text('Pickup Locations:', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 4),
+              ...restaurantAddresses.map((restaurant) {
+                final restaurantName = restaurant['restaurant_name'] ?? 'Unknown Restaurant';
+                final address = restaurant['address'] ?? 'Address not provided';
+                return Padding(
+                  padding: EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.store, size: 16, color: AppColors.primary),
+                      SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          '$restaurantName: $address',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              SizedBox(height: 8),
+            ],
+
             Text('Items:', style: TextStyle(fontWeight: FontWeight.bold)),
-            ...items.map((item) {
-              final dish = item['dishes'];
-              final dishName = dish != null ? dish['name'] : 'Unknown';
-              final price = dish != null ? dish['price'] : 0;
-              final quantity = item['quantity'] ?? 1;
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 4),
-                child: Text('$dishName × $quantity - \$${price * quantity}'),
-              );
-            }).toList(),
-            SizedBox(height: 8),
-            if (status == 'delivered')
-              Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green),
-                  SizedBox(width: 8),
-                  Text('Delivered',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.green)),
-                ],
-              )
-            else if (status == 'waiting for confirmation')
-              Row(
-                children: [
-                  Icon(Icons.access_time, color: Colors.yellow),
-                  SizedBox(width: 8),
-                  Text('Waiting for Confirmation',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.yellow[700])),
-                ],
-              )
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Status: $status',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, color: AppColors.secondary)),
-                  SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: buttonText == 'Accept' ? onPressed : () {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return AlertDialog(
-                            title: Text('Confirm Status Change'),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Order ID: $orderId'),
-                                SizedBox(height: 8),
-                                Text('Delivery Address: $deliveryAddress'),
-                                SizedBox(height: 4),
-                                Text('Pickup Address: $pickupAddress'),
-                                SizedBox(height: 8),
-                                Text('Items:', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ...items.map((item) {
-                                  final dish = item['dishes'];
-                                  final dishName = dish != null ? dish['name'] : 'Unknown';
-                                  final price = dish != null ? dish['price'] : 0;
-                                  final quantity = item['quantity'] ?? 1;
-                                  return Text('$dishName × $quantity - \$${price * quantity}');
-                                }).toList(),
-                                SizedBox(height: 8),
-                                Text('Change status to: $nextStatus'),
-                              ],
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                },
-                                child: Text('Cancel'),
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                  if (onPressed != null) onPressed();
-                                },
-                                child: Text('Confirm'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primary,
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            ],
+            // Group items by restaurant
+            ...(() {
+              Map<String, List<dynamic>> itemsByRestaurant = {};
+              for (var item in items) {
+                final restaurantId = item['restaurant_id'] as String? ?? 'unknown';
+                itemsByRestaurant.putIfAbsent(restaurantId, () => []).add(item);
+              }
+
+              List<Widget> restaurantWidgets = [];
+              itemsByRestaurant.forEach((restaurantId, restItems) {
+                final restaurantName = restaurantAddresses.firstWhere(
+                  (r) => r['restaurant_id'] == restaurantId,
+                  orElse: () => {'restaurant_name': 'Unknown Restaurant'},
+                )['restaurant_name'] ?? 'Unknown Restaurant';
+
+                restaurantWidgets.add(
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('$restaurantName:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        ...restItems.map((item) {
+                          final dish = item['dishes'];
+                          final dishName = dish != null ? dish['name'] : 'Unknown';
+                          final price = dish != null ? dish['price'] : 0;
+                          final quantity = item['quantity'] ?? 1;
+                          final itemStatus = item['status'] ?? 'placed';
+
+                          return Padding(
+                            padding: EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                            child: Text('$dishName × $quantity - \$${price * quantity} (Status: $itemStatus)'),
                           );
-                        },
-                      );
-                    },
-                    child: Text(buttonText),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
+                        }).toList(),
+                        // Pickup button for each restaurant when driver accepts order
+                        if (isAssignedToCurrent) ...[
+                          SizedBox(height: 4),
+                          ElevatedButton(
+                            onPressed: restItems.every((item) => item['status'] == 'ready_for_pickup')
+                                ? () => pickupItems(orderId, restaurantId)
+                                : null,
+                            child: Text('Picked Up'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: restItems.every((item) => item['status'] == 'ready_for_pickup')
+                                  ? AppColors.primary
+                                  : Colors.grey,
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ],
-              ),
+                );
+              });
+              return restaurantWidgets;
+            })(),
+            SizedBox(height: 8),
+
+            // Status and action buttons
+            () {
+              if (status == 'delivered')
+                return Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text('Delivered',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.green)),
+                  ],
+                );
+              else if (status == 'waiting for confirmation')
+                return Row(
+                  children: [
+                    Icon(Icons.access_time, color: Colors.yellow),
+                    SizedBox(width: 8),
+                    Text('Waiting for Confirmation',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.yellow[700])),
+                  ],
+                );
+              else
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Status: $status',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: AppColors.secondary)),
+                    SizedBox(height: 8),
+
+                    // Action buttons based on status
+                    if (!isAssigned && (status == 'confirmed' || status == 'order called for delivery'))
+                      ElevatedButton(
+                        onPressed: () => acceptOrder(orderId),
+                        child: Text('Accept Order'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                      )
+                    else if (isAssigned && status == 'order called for delivery')
+                      () {
+                        final restaurantIds = order['restaurant_ids'] as List<dynamic>?;
+                        final isMulti = (restaurantIds?.length ?? 0) > 1;
+                        if (isMulti)
+                          // Multi-restaurant order: show acquire buttons for each restaurant
+                          return Column(
+                            children: [
+                              Text('Acquire from each restaurant:', style: TextStyle(fontWeight: FontWeight.bold)),
+                              SizedBox(height: 8),
+                              ...restaurantAddresses.map((restaurant) {
+                                final restaurantId = restaurant['restaurant_id'] as String?;
+                                if (restaurantId == null) return SizedBox.shrink();
+                                final isAcquired = acquiredRestaurants[orderId]?.contains(restaurantId) ?? false;
+                                return Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          restaurant['restaurant_name'] ?? 'Unknown Restaurant',
+                                          style: TextStyle(fontSize: 14),
+                                        ),
+                                      ),
+                                      if (isAcquired)
+                                        Icon(Icons.check_circle, color: Colors.green, size: 20)
+                                      else
+                                        ElevatedButton(
+                                          onPressed: () => acquireRestaurant(orderId, restaurantId),
+                                          child: Text('Acquire'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.primary,
+                                            foregroundColor: Colors.white,
+                                            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ],
+                          );
+                        else
+                          // Single restaurant: no button here, pickup per restaurant
+                          return SizedBox.shrink();
+                      }()
+                    else if (status == 'waiting for delivery')
+                      () {
+                        // Check if all restaurants have been picked up
+                        final restaurantStatuses = order['restaurant_statuses'] as List<dynamic>? ?? [];
+                        final allPickedUp = restaurantStatuses.every((status) => status['picked_up'] == true);
+
+                        return ElevatedButton(
+                          onPressed: allPickedUp ? () => updateOrderStatus(orderId, 'waiting for confirmation') : null,
+                          child: Text('Delivered to Customer'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: allPickedUp ? AppColors.primary : Colors.grey,
+                            foregroundColor: Colors.white,
+                          ),
+                        );
+                      }(),
+                  ],
+                );
+            }(),
           ],
         ),
       ),
